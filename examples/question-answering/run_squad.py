@@ -30,7 +30,15 @@ from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
 
 import sys
-sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
+# ----------------------------------------------------------------------------------------------------------------------
+# This block of code allows running the script from command line, and making sure all needed imports will work properly.
+# make sure it is executed above any import to any file from this repo
+root_dir = os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+src_dir = os.path.join(root_dir, 'src')
+data_dir = os.path.join(src_dir, 'data')
+sys.path.extend([root_dir, src_dir, data_dir])
+# ----------------------------------------------------------------------------------------------------------------------
+
 
 import transformers
 from transformers import (
