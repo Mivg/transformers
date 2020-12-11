@@ -29,6 +29,9 @@ from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
 
+import sys
+sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
+
 import transformers
 from transformers import (
     MODEL_FOR_QUESTION_ANSWERING_MAPPING,
