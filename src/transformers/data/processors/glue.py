@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ GLUE processors and helpers """
-
+import json
 import os
 import warnings
 from dataclasses import asdict
@@ -605,6 +605,95 @@ class WnliProcessor(DataProcessor):
         return examples
 
 
+
+class SnliProcessor(DataProcessor):
+    """Processor for the SNLI data set."""
+
+    def get_example_from_tensor_dict(self, tensor_dict):
+        """See base class."""
+        return InputExample(tensor_dict['idx'].numpy(),
+                            tensor_dict['premise'].numpy().decode('utf-8'),
+                            tensor_dict['hypothesis'].numpy().decode('utf-8'),
+                            str(tensor_dict['label'].numpy()))
+
+    def get_train_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(
+            self._read_tsv(os.path.join(data_dir, "train.tsv")), "train")
+
+    def get_dev_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(
+            self._read_tsv(os.path.join(data_dir, "dev.tsv")),
+            "dev_matched")
+
+    def get_labels(self):
+        """See base class."""
+        return ["contradiction", "entailment", "neutral"]
+
+    def _create_examples(self, lines, set_type):
+        """Creates examples for the training and dev sets."""
+        examples = []
+        n_cols = len(lines[0])
+        guid_ind, sent1_ind, sent2_ind, gold_label_ind = 0, 7, 8, n_cols-1  # train has 11 cols, dev has 15 (5 experts labels not one)
+        for (i, line) in enumerate(lines):
+            if i == 0 or len(line) != n_cols or line[gold_label_ind].strip() == '':  # for now, don't warn on bad lines
+                continue
+            guid = "%s-%s" % (set_type, line[guid_ind])
+            text_a = line[sent1_ind]
+            text_b = line[sent2_ind]
+            # apparently, there is a bug here. some of the lines don't have a gold label, but since we are not asserting the length of the
+            # line, and instead take -1, it uses the last label (out of 5) as the label in the dev samples. However, if we pertrub the data
+            # this field is empty and thus returns NaN
+            label = line[gold_label_ind]
+            examples.append(
+                InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
+        print(f'-----> SKipped {len(lines)-1-len(examples)} lines of {len(lines)-1}')
+        return examples
+
+
+class BoolqProcessor(DataProcessor):
+    """Processor for the boolq data set."""
+
+    def get_example_from_tensor_dict(self, tensor_dict):
+        """See base class."""
+        return InputExample(tensor_dict['idx'].numpy(),
+                            tensor_dict['question'].numpy().decode('utf-8'),
+                            tensor_dict['passage'].numpy().decode('utf-8'),
+                            str(tensor_dict['label'].numpy()))
+
+    def get_train_examples(self, data_dir):
+        """See base class."""
+        filepath = os.path.join(data_dir, "train.jsonl")
+        with open(filepath, encoding="utf-8") as lines:
+            return self._create_examples(lines, "train")
+
+    def get_dev_examples(self, data_dir):
+        """See base class."""
+        filepath = os.path.join(data_dir, "val.jsonl")
+        with open(filepath, encoding="utf-8") as lines:
+            return self._create_examples(lines, "dev")
+
+    def get_labels(self):
+        """See base class."""
+        return ["0", "1"]
+
+    def _create_examples(self, lines, set_type):
+        """Creates examples for the training and dev sets."""
+        examples = []
+        for (i, line) in enumerate(lines):
+            data = json.loads(line)
+            question = data["question"]
+            label = ('1' if data["label"] else '0') if 'label' in data else None
+            passage = data["passage"]
+            idx = data["idx"]
+            guid = "%s-%d" % (set_type, idx)
+            # TODO - shuold move to sliding window approach of some kind and replace the order of question and passage?
+            # though actually, it uses method of 'longest_first' in the trucation so it doesn't really matter
+            examples.append(InputExample(guid=guid, text_a=question, text_b=passage, label=label))
+        return examples
+
+
 glue_tasks_num_labels = {
     "cola": 2,
     "mnli": 3,
@@ -615,6 +704,8 @@ glue_tasks_num_labels = {
     "qnli": 2,
     "rte": 2,
     "wnli": 2,
+    "snli": 3,
+    "boolq": 2,
 }
 
 glue_processors = {
@@ -628,6 +719,8 @@ glue_processors = {
     "qnli": QnliProcessor,
     "rte": RteProcessor,
     "wnli": WnliProcessor,
+    "snli": SnliProcessor,
+    "boolq": BoolqProcessor,
 }
 
 glue_output_modes = {
@@ -641,4 +734,6 @@ glue_output_modes = {
     "qnli": "classification",
     "rte": "classification",
     "wnli": "classification",
+    "snli": "classification",
+    "boolq": "classification",
 }
