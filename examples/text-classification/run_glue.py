@@ -14,7 +14,6 @@
 # limitations under the License.
 """ Finetuning the library models for sequence classification on GLUE."""
 # You can also adapt this script on your own text classification task. Pointers for this are left as comments.
-
 import logging
 import os
 import random
@@ -23,6 +22,8 @@ import sys
 # ----------------------------------------------------------------------------------------------------------------------
 # This block of code allows running the script from command line, and making sure all needed imports will work properly.
 # make sure it is executed above any import to any file from this repo
+import warnings
+
 root_dir = os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 src_dir = os.path.join(root_dir, 'src')
 data_dir = os.path.join(src_dir, 'data')
@@ -33,6 +34,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import numpy as np
+import pandas as pd
 from datasets import load_dataset, load_metric
 
 import transformers
@@ -61,10 +63,32 @@ task_to_keys = {
     "sst2": ("sentence", None),
     "stsb": ("sentence1", "sentence2"),
     "wnli": ("sentence1", "sentence2"),
+    "snli": ("sentence1", "sentence2"),  # TODO
+    "boolq": ("passage", "question"),
 }
 
 logger = logging.getLogger(__name__)
 
+
+def _tsv_to_csv(*paths, overwrite=False):
+    # warning - this util has two main issues:
+    # 1. If you start multiple jobs on the same csv you may face issues as both will write/read/delete the csv file in the same time
+    # 2. if you modified your input file but overwrite is False, you would not see the modifications and this can cause silent bugs
+    warnings.warn('Using tsv is not safe, and shuold be avoided if possible.')
+    new_paths = []
+    for p in paths:
+        if p is None:
+            new_paths.append(p)
+            continue
+        assert p.endswith('.tsv')
+        new_p = p[:-3] + 'csv'
+        new_paths.append(new_p)
+        if not os.path.isfile(new_p) or overwrite:
+            csv_table = pd.read_table(p, sep='\t')
+            csv_table.to_csv(new_p, index=False)
+            # with open(p, "r", encoding="utf-8-sig") as f, open(new_p, 'w', encoding="utf-8-sig") as of:
+            #     return list(csv.reader(f, delimiter="\t", quotecharpython te=None))
+    return new_paths
 
 @dataclass
 class DataTrainingArguments:
@@ -113,9 +137,9 @@ class DataTrainingArguments:
             raise ValueError("Need either a GLUE task or a training/validation file.")
         else:
             extension = self.train_file.split(".")[-1]
-            assert extension in ["csv", "json"], "`train_file` should be a csv or a json file."
+            assert extension in ["csv", "tsv", "json", 'jsonl'], "`train_file` should be a csv/tsv or a json/jsonl file."
             extension = self.validation_file.split(".")[-1]
-            assert extension in ["csv", "json"], "`validation_file` should be a csv or a json file."
+            assert extension in ["csv", "tsv", "json", 'jsonl'], "`validation_file` should be a csv/tsv or a json/jsonl file."
 
 
 @dataclass
@@ -201,16 +225,23 @@ def main():
     #
     # In distributed training, the load_dataset function guarantee that only one local process can concurrently
     # download the dataset.
-    if data_args.task_name is not None:
+
+    # datasets = load_dataset(data_args.task_name)  # we could have used the presented code to load boolq and snli, but loading the datasets
+    # as they are is not good here. instead, need to load them from local files according to
+    # https://huggingface.co/docs/datasets/loading_datasets.html#from-local-files
+    if data_args.task_name is not None and data_args.task_name not in {'snli', 'boolq'}:
         # Downloading and loading a dataset from the hub.
         datasets = load_dataset("glue", data_args.task_name)
-    elif data_args.train_file.endswith(".csv"):
+    elif data_args.train_file.endswith("sv"):
+        if data_args.train_file.endswith(".tsv"):
+            data_args.train_file, data_args.validation_file = _tsv_to_csv(data_args.train_file, data_args.validation_file)
         # Loading a dataset from local csv files
         datasets = load_dataset(
             "csv", data_files={"train": data_args.train_file, "validation": data_args.validation_file}
         )
     else:
-        # Loading a dataset from local json files
+        # Loading a dataset from local json files (or jsonl)
+        # https://huggingface.co/docs/datasets/package_reference/loading_methods.html#datasets.load_dataset
         datasets = load_dataset(
             "json", data_files={"train": data_args.train_file, "validation": data_args.validation_file}
         )
