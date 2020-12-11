@@ -19,6 +19,8 @@ import logging
 import os
 import random
 import sys
+sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
+
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -377,6 +379,11 @@ def main():
                     for key, value in eval_result.items():
                         logger.info(f"  {key} = {value}")
                         writer.write(f"{key} = {value}\n")
+
+            # TODO - we need here some way to dump the predictions. In the old file I used:
+            # output_eval_predictions_file = os.path.join(eval_output_dir, prefix, "eval_predictions.npz")
+            # np.savez_compressed(output_eval_predictions_file, preds)
+
 
             eval_results.update(eval_result)
 
